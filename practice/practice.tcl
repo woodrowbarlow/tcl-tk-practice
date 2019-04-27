@@ -7,6 +7,39 @@ namespace eval ::gui {
     namespace export initialize
 }
 
+namespace eval ::util { }
+
+# util::getoptions
+#
+#       Given a list of arguments and an array filled with option
+#       names, populate the array with the arguments whose names
+#       match and return a list of the remaining arguments.
+#
+# Arguments
+#
+#       args        A list of arguments.
+#
+#       optionsname The name of an array of options, pre-filled with
+#                   names and default values.
+#
+# Return Value
+#
+#       A list of arguments which did not match those specified.
+
+proc util::getoptions { args optsname } {
+    upvar 1 $optsname opts
+    set std [list]
+    set keys [array names opts]
+    foreach {opt val} $args {
+        if {[lsearch -exact $keys $opt] >= 0} {
+            set opts($opt) $val
+        } else {
+            lappend std $opt $val
+        }
+    }
+    return $std
+}
+
 # gui::mainframe (ttk::frame)
 #
 #       Construct a main frame for the practice GUI. The parent element
@@ -23,22 +56,17 @@ namespace eval ::gui {
 
 proc gui::mainframe { w args } {
     # set a default value for all custom options
-    array set custom_args { -test {} }
-    set std_args [list]
-    foreach {opt val} $args {
-        switch -- $opt {
-            -test {
-                set custom_args($opt) $val
-            }
-            default {
-                # non-custom options will be passed to the frame
-                lappend std_args $opt $val
-            }
-        }
+    array set options {
+        -test       ""
+        -test2      ""
     }
 
+    # populate the options array with values from `args`
+    # additionally, strip the custom options out of `args`
+    set args [util::getoptions $args options]
+
     # create the frame for this widget, which acts as a container
-    eval [list ttk::frame $w] $std_args
+    eval [list ttk::frame $w] $args
 
     # when we create an element, like the frame above, tk creates
     # a proc with that element's path as the name. in order to
@@ -50,20 +78,23 @@ proc gui::mainframe { w args } {
         # begins with the proc name.
         set w [lindex [info level 0] 0]
         switch -- $cmd {
-            test {
+            test -
+            test2 {
                 # invoke a custom handler
-                mainframe'test $w $args
+                mainframe'$cmd $w $args
             }
             default {
-                # non-custom commands get passed to the shadowproc
+                # non-custom commands get passed to the shadowproc.
+                # `uplevel 1` allows it to run with the same runlevel as
+                # this subproc (and with the same name).
                 uplevel 1 _$w $cmd $args
             }
         }
     }
 
     # now, start putting stuff in the frame
-    pack [list [ttk::label $w.lbl -text $custom_args(-test)]]
-    pack [list [ttk::button $w.btn -text "click me"]]
+    pack [list [ttk::label $w.lbl -text $options(-test)]]
+    pack [list [ttk::button $w.btn -text $options(-test2)]]
 
     # return the frame's identifier so something else can pass it
     # directly into a layout manager
@@ -80,7 +111,7 @@ proc gui::mainframe { w args } {
 #       A list of strings to be printed to the console.
 
 proc gui::mainframe'test { w args } {
-    puts "custom command on $w"
+    puts "test command on $w"
     puts $args
 }
 
@@ -89,8 +120,11 @@ proc gui::mainframe'test { w args } {
 #       Initialize the GUI (spawn the window and populate it).
 
 proc gui::initialize { } {
-    set mainframe [gui::mainframe .mainframe \
-            -test "hello world" -height 500 -width 400]
+    set mainframe [
+        gui::mainframe .mainframe \
+                -height 500 -width 400 \
+                -test "hello world" -test2 "click"
+    ]
     place $mainframe -x 0 -y 0
     # invoke a custom command
     $mainframe test with arguments
